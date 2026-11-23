@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.textreader.app.service.TouchAwareLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/overlay_bg"
     android:elevation="8dp"
     android:orientation="vertical"
-    android:paddingStart="10dp"
+    android:paddingStart="12dp"
     android:paddingTop="6dp"
-    android:paddingEnd="6dp"
-    android:paddingBottom="8dp">
+    android:paddingEnd="8dp"
+    android:paddingBottom="12dp">
 
+    <!-- Header: move, title, minimize, close -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -19,7 +20,7 @@
         <ImageView
             android:id="@+id/panel_drag"
             android:layout_width="28dp"
-            android:layout_height="36dp"
+            android:layout_height="40dp"
             android:contentDescription="@string/move_panel"
             android:scaleType="center"
             android:src="@drawable/ic_drag" />
@@ -27,7 +28,7 @@
         <TextView
             android:id="@+id/panel_title"
             android:layout_width="0dp"
-            android:layout_height="36dp"
+            android:layout_height="40dp"
             android:layout_marginStart="4dp"
             android:layout_weight="1"
             android:ellipsize="end"
@@ -35,64 +36,215 @@
             android:singleLine="true"
             android:text="@string/app_name"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:textSize="15sp"
             android:textStyle="bold" />
 
         <ImageButton
-            android:id="@+id/panel_close"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:id="@+id/panel_minimize"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/hide_panel"
+            android:contentDescription="@string/minimize"
+            android:src="@drawable/ic_minimize" />
+
+        <ImageButton
+            android:id="@+id/panel_close"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/close"
             android:src="@drawable/ic_close" />
     </LinearLayout>
 
-    <LinearLayout
+    <!-- First words of pasted text -->
+    <TextView
+        android:id="@+id/panel_preview"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:layout_marginStart="4dp"
+        android:layout_marginBottom="8dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="#CFCFCF"
+        android:textSize="13sp"
+        android:visibility="gone" />
 
-        <Button
-            android:id="@+id/panel_read"
+    <!-- Slim Paste bar (panel already open when you copy) -->
+    <LinearLayout
+        android:id="@+id/panel_paste_bar"
+        android:layout_width="match_parent"
+        android:layout_height="46dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/btn_paste_bg"
+        android:clickable="true"
+        android:focusable="false"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_clipboard" />
+
+        <TextView
             android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:background="@drawable/read_button_bg"
-            android:minWidth="76dp"
-            android:paddingStart="18dp"
-            android:paddingEnd="18dp"
-            android:stateListAnimator="@null"
-            android:text="@string/read"
-            android:textAllCaps="false"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="@string/paste_copied_text"
             android:textColor="#FFFFFF"
-            android:textSize="15sp" />
+            android:textSize="16sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
-        <ImageButton
-            android:id="@+id/panel_play"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="4dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/play"
-            android:src="@drawable/ic_play" />
+    <!-- Big Paste button (opened from the bubble after copying) -->
+    <LinearLayout
+        android:id="@+id/panel_paste_big"
+        android:layout_width="match_parent"
+        android:layout_height="68dp"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/btn_paste_bg"
+        android:clickable="true"
+        android:focusable="false"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_clipboard" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:text="@string/paste"
+            android:textColor="#FFFFFF"
+            android:textSize="19sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Normal controls -->
+    <LinearLayout
+        android:id="@+id/panel_controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:id="@+id/panel_read"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:background="@drawable/btn_read_bg"
+            android:clickable="true"
+            android:focusable="false"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_read" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:text="@string/read"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:id="@+id/panel_play"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_marginEnd="4dp"
+                android:layout_weight="1"
+                android:background="@drawable/btn_play_bg"
+                android:clickable="true"
+                android:focusable="false"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:id="@+id/panel_play_icon"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_play" />
+
+                <TextView
+                    android:id="@+id/panel_play_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/play"
+                    android:textColor="#FFFFFF"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/panel_stop"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_marginStart="4dp"
+                android:layout_weight="1"
+                android:background="@drawable/btn_stop_bg"
+                android:clickable="true"
+                android:focusable="false"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_stop" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/stop"
+                    android:textColor="#FFFFFF"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
 
         <SeekBar
             android:id="@+id/panel_seek"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_marginTop="12dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
             android:progressBackgroundTint="#66FFFFFF"
-            android:progressTint="#90CAF9"
+            android:progressTint="#8FB3D9"
             android:thumbTint="#FFFFFF" />
-    </LinearLayout>
 
-    <TextView
-        android:id="@+id/panel_status"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:ellipsize="end"
-        android:singleLine="true"
-        android:textColor="#CCFFFFFF"
-        android:textSize="12sp" />
-</LinearLayout>
+        <TextView
+            android:id="@+id/panel_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:textColor="#CCFFFFFF"
+            android:textSize="13sp" />
+    </LinearLayout>
+</com.textreader.app.service.TouchAwareLayout>

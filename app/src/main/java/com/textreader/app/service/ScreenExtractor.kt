@@ -3,10 +3,20 @@ package com.textreader.app.service
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
 
-/** One piece of text found on screen, in reading order. */
-data class Chunk(val text: String, val isCode: Boolean, val joinPrev: Boolean)
+/**
+ * One piece of text found on screen, in reading order.
+ * [isAction] marks a row of Like / Share / Copy buttons (the end of a post or answer);
+ * [top] is its position on screen.
+ */
+data class Chunk(
+    val text: String,
+    val isCode: Boolean,
+    val joinPrev: Boolean,
+    val isAction: Boolean = false,
+    val top: Int = 0,
+)
 
-data class Screen(val packageName: String, val chunks: List<Chunk>) {
+data class Screen(val packageName: String, val chunks: List<Chunk>, val window: Rect = Rect()) {
     val texts: List<String> get() = chunks.map { it.text }
 }
 
@@ -48,12 +58,27 @@ object ScreenExtractor {
         "sponsored content", "adchoices", "ad choices", "skip ad",
     )
 
-    private class Ctx(val inWeb: Boolean, val window: Rect)
-    private class Raw(val text: String, val isCode: Boolean, val rect: Rect)
+    // Words that label the action buttons under a post or an AI answer.
+    private val actionWords = setOf(
+        "like", "likes", "liked", "unlike", "love", "react", "reaction", "reactions",
+        "comment", "comments", "reply", "replies", "share", "shares", "repost", "reposts",
+        "retweet", "retweets", "quote", "bookmark", "bookmarks", "save", "saved",
+        "copy", "copied", "upvote", "downvote", "upvoted", "downvoted", "award", "awards",
+        "helpful", "unhelpful", "regenerate", "retry", "thumbs", "analytics", "views",
+    )
+    private val actionPhrases = listOf(
+        "good response", "bad response", "read aloud", "give feedback", "more actions",
+        "thumbs up", "thumbs down", "not helpful",
+    )
+
+    const val ACTION_MARK = "\u0001ACTION\u0001"
+
+    private class Ctx(val inWeb: Boolean, val window: Rect, val stopAtActions: Boolean)
+    private class Raw(val text: String, val isCode: Boolean, val rect: Rect, val isAction: Boolean = false)
 
     fun isBrowser(packageName: String) = packageName in browsers
 
-    fun extract(root: AccessibilityNodeInfo): Screen {
+    fun extract(root: AccessibilityNodeInfo, stopAtActions: Boolean = true): Screen {
         val pkg = root.packageName?.toString().orEmpty()
         val window = bounds(root)
         val out = ArrayList<Raw>()
@@ -63,22 +88,70 @@ object ScreenExtractor {
             val webRoots = ArrayList<AccessibilityNodeInfo>()
             findWebRoots(root, webRoots, 0)
             if (webRoots.isEmpty()) {
-                walk(root, out, Ctx(inWeb = true, window = window), 0, isStart = true, parentClickable = false)
+                walk(root, out, Ctx(inWeb = true, window = window, stopAtActions = stopAtActions), 0, isStart = true, parentClickable = false)
             } else {
                 for (web in webRoots) {
                     val main = findRole(web, "main", 0)
-                    walk(main ?: web, out, Ctx(inWeb = true, window = window), 0, isStart = true, parentClickable = false)
+                    walk(main ?: web, out, Ctx(inWeb = true, window = window, stopAtActions = stopAtActions), 0, isStart = true, parentClickable = false)
                 }
             }
         } else {
-            walk(root, out, Ctx(inWeb = false, window = window), 0, isStart = true, parentClickable = false)
+            walk(root, out, Ctx(inWeb = false, window = window, stopAtActions = stopAtActions), 0, isStart = true, parentClickable = false)
         }
 
-        val chunks = out.mapIndexed { i, raw ->
-            val join = i > 0 && !raw.isCode && !out[i - 1].isCode && sameLine(out[i - 1].rect, raw.rect)
-            Chunk(raw.text.trim(), raw.isCode, join)
-        }.filter { it.isCode || it.text.isNotEmpty() }
-        return Screen(pkg, chunks)
+        val items = groupActionRows(out)
+        val chunks = items.mapIndexed { i, raw ->
+            val prev = if (i > 0) items[i - 1] else null
+            val join = prev != null && !raw.isCode && !raw.isAction && !prev.isCode && !prev.isAction &&
+                sameLine(prev.rect, raw.rect)
+            if (raw.isAction) {
+                Chunk(ACTION_MARK, isCode = false, joinPrev = false, isAction = true, top = raw.rect.top)
+            } else {
+                Chunk(raw.text.trim(), raw.isCode, join)
+            }
+        }.filter { it.isCode || it.isAction || it.text.isNotEmpty() }
+        return Screen(pkg, chunks, window)
+    }
+
+    /**
+     * Two or more action buttons on one line (with only small counts like "1.2K" between them)
+     * become one action-row marker. A single button (like a code block's Copy) is not a row.
+     */
+    private fun groupActionRows(raw: List<Raw>): List<Raw> {
+        val result = ArrayList<Raw>()
+        var i = 0
+        while (i < raw.size) {
+            val first = raw[i]
+            if (!first.isAction) {
+                result += first
+                i++
+                continue
+            }
+            var j = i
+            var actions = 0
+            var lastAction = first.rect
+            val between = ArrayList<Raw>()
+            while (j < raw.size) {
+                val item = raw[j]
+                if (item.isAction && (actions == 0 || sameLine(lastAction, item.rect))) {
+                    actions++
+                    lastAction = item.rect
+                    j++
+                } else if (!item.isAction && !item.isCode && item.text.trim().length <= 12 && sameLine(lastAction, item.rect)) {
+                    between += item
+                    j++
+                } else {
+                    break
+                }
+            }
+            if (actions >= 2) {
+                result += Raw("", isCode = false, rect = first.rect, isAction = true)
+            } else {
+                result.addAll(between)
+            }
+            i = j
+        }
+        return result
     }
 
     private fun walk(
@@ -93,6 +166,11 @@ object ScreenExtractor {
         if (!node.isVisibleToUser) return
         val cls = node.className?.toString().orEmpty()
         val role = role(node)
+
+        if (!isStart && ctx.stopAtActions && isActionButton(node, cls, role)) {
+            out += Raw("", isCode = false, rect = bounds(node), isAction = true)
+            return
+        }
 
         if (!isStart) {
             if (ctx.inWeb && cls == WEBVIEW) return // an embedded frame, usually an ad
@@ -184,6 +262,27 @@ object ScreenExtractor {
         return name.lowercase()
     }
 
+    /** A clickable button whose label means like / share / copy / comment and so on. */
+    private fun isActionButton(node: AccessibilityNodeInfo, cls: String, role: String?): Boolean {
+        val buttonLike = node.isClickable || role == "button" || role == "togglebutton" ||
+            cls.endsWith("Button") || cls.endsWith("ImageButton")
+        if (!buttonLike) return false
+        val label = node.contentDescription?.toString()?.takeIf { it.isNotBlank() }
+            ?: node.text?.toString()?.takeIf { it.isNotBlank() }
+            ?: subtreeText(node, 0).takeIf { it.length in 1..40 }
+            ?: return false
+        return isActionLabel(label)
+    }
+
+    private fun isActionLabel(label: String): Boolean {
+        val lower = label.lowercase().trim()
+        if (lower.isEmpty() || lower.length > 70) return false
+        if (actionPhrases.any { lower.contains(it) }) return true
+        val words = Regex("[a-z]+").findAll(lower).map { it.value }.toList()
+        if (words.isEmpty() || words.size > 8) return false
+        return words.any { it in actionWords }
+    }
+
     private fun isImage(cls: String) = cls.contains("Image")
 
     private fun isControl(cls: String): Boolean {
@@ -232,6 +331,6 @@ object Overlap {
         }
         if (bestEnd >= 0) return next.drop(bestEnd)
         val seen = lastScreen.toHashSet()
-        return next.filter { it.isCode || it.text !in seen }
+        return next.filter { it.isCode || it.isAction || it.text !in seen }
     }
 }

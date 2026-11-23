@@ -35,7 +35,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 
-enum class Source { NONE, SCREEN, FILE }
+enum class Source { NONE, SCREEN, FILE, CLIPBOARD }
 
 data class ReaderState(
     val title: String = "",
@@ -51,6 +51,10 @@ data class ReaderState(
     /** More text is still being collected (auto-scroll or a big file). */
     val gathering: Boolean = false,
     val message: String? = null,
+    /** First words of pasted text, shown under the title. */
+    val preview: String? = null,
+    /** False until Play is pressed for this text (or after Stop). */
+    val started: Boolean = false,
 )
 
 /**
@@ -122,8 +126,11 @@ class Reader(private val context: Context, private val settings: Settings) {
     // Input
     // =====================================================================
 
-    /** Starts a new reading. Returns a token for [append]/[finish]; older tokens are ignored. */
-    fun startNew(title: String, source: Source): Long {
+    /**
+     * Starts a new reading. Returns a token for [append]/[finish]; older tokens are ignored.
+     * With [autoPlay] false the text is loaded and waits for Play (used for Paste).
+     */
+    fun startNew(title: String, source: Source, autoPlay: Boolean = true, preview: String? = null): Long {
         val newToken: Long
         synchronized(lock) {
             token += 1
@@ -138,8 +145,10 @@ class Reader(private val context: Context, private val settings: Settings) {
             currentIndex = 0
             paused = false
             finished = false
-            publish { ReaderState(title = title, source = source, playing = true, waiting = true) }
-            startPlayJob()
+            publish {
+                ReaderState(title = title, source = source, playing = autoPlay, waiting = autoPlay, preview = preview)
+            }
+            if (autoPlay) startPlayJob()
         }
         return newToken
     }
@@ -183,7 +192,7 @@ class Reader(private val context: Context, private val settings: Settings) {
         val total = totalNow()
         val running = playJob?.isActive == true
         when {
-            total == 0 && !gatheringNow() -> Unit
+            total == 0 && !gatheringNow() -> publish { it.copy(message = "Nothing loaded yet. Tap Read or Paste.") }
             !running -> {
                 if (finished) currentIndex = 0
                 paused = false
@@ -209,14 +218,19 @@ class Reader(private val context: Context, private val settings: Settings) {
             paused = false
             startPlayJob()
         } else {
-            publish { it.copy(playing = false, waiting = false) }
+            // Moved while paused/stopped: show the new spot; Play continues from here.
+            publish { it.copy(playing = false, waiting = false, started = true) }
         }
     }
 
+    /** Stops completely. The next Play starts again from the beginning. */
     fun stop() = launchControl {
         stopPlaybackJob()
         paused = false
-        publish { it.copy(playing = false, waiting = false) }
+        currentIndex = 0
+        finished = false
+        abandonFocus()
+        publish { it.copy(playing = false, waiting = false, started = false) }
     }
 
     // =====================================================================
@@ -229,6 +243,7 @@ class Reader(private val context: Context, private val settings: Settings) {
 
     private fun startPlayJob() {
         finished = false
+        publish { it.copy(started = true, message = null) }
         playJob = scope.launch { playLoop() }
     }
 
@@ -295,6 +310,7 @@ class Reader(private val context: Context, private val settings: Settings) {
             drain(audio)
             currentIndex = (totalNow() - 1).coerceAtLeast(0)
             finished = true
+            abandonFocus()
             publish { it.copy(playing = false, waiting = false) }
         } catch (e: CancellationException) {
             throw e
@@ -420,6 +436,10 @@ class Reader(private val context: Context, private val settings: Settings) {
             .build()
         track = created
         return created
+    }
+
+    private fun abandonFocus() {
+        runCatching { audioManager.abandonAudioFocusRequest(focusRequest) }
     }
 
     private fun requestFocus(): Boolean =

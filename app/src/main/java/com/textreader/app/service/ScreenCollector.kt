@@ -25,7 +25,8 @@ import kotlin.coroutines.resume
 class ScreenCollector(
     private val service: AccessibilityService,
     private val reader: Reader,
-    private val panel: OverlayPanel,
+    private val ui: FloatingUi,
+    private val stopAtActions: Boolean,
 ) {
 
     private class ResumePoint(val packageName: String, val tail: List<String>)
@@ -34,6 +35,16 @@ class ScreenCollector(
         const val MAX_SCREENS = 10
         private const val SETTLE_MS = 450L
         private var resumePoint: ResumePoint? = null
+
+        // Apps where posts or answers are short, so a Like/Share/Copy row ends reading right away.
+        private val postApps = setOf(
+            "com.facebook.katana", "com.facebook.lite", "com.twitter.android", "com.reddit.frontpage",
+            "com.anthropic.claude", "com.openai.chatgpt", "com.google.android.googlequicksearchbox",
+            "com.google.android.apps.bard",
+        )
+
+        /** Elsewhere (web pages), a share row near the top of an article shouldn't end reading early. */
+        private const val MIN_WORDS_ELSEWHERE = 40
     }
 
     suspend fun run() {
@@ -44,9 +55,9 @@ class ScreenCollector(
         }
         val pkg = root.packageName?.toString().orEmpty()
         val token = reader.startNew(screenTitle(pkg), Source.SCREEN)
-        val first = withContext(Dispatchers.Default) { ScreenExtractor.extract(root) }
+        val first = withContext(Dispatchers.Default) { ScreenExtractor.extract(root, stopAtActions) }
 
-        if (first.chunks.isEmpty()) {
+        if (first.chunks.none { !it.isAction }) {
             // No readable text in the accessibility tree (text drawn as a picture). Try OCR.
             val blocks = ocrScreen(root)
             if (blocks.isNotEmpty()) reader.append(token, blocks)
@@ -56,21 +67,47 @@ class ScreenCollector(
 
         val assembler = BlockAssembler { blocks -> reader.append(token, blocks) }
         val collected = ArrayList<String>()
+        val minWords = if (pkg in postApps) 1 else MIN_WORDS_ELSEWHERE
+        var words = 0
+        var stoppedAtActions = false
+
+        /** Keeps the text up to a Like/Share/Copy row (once enough has been read), then stops. */
+        fun upToActionRow(chunks: List<Chunk>): List<Chunk> {
+            val keep = ArrayList<Chunk>()
+            for (chunk in chunks) {
+                if (chunk.isAction) {
+                    if (words >= minWords) {
+                        stoppedAtActions = true
+                        return keep
+                    }
+                    continue
+                }
+                keep += chunk
+                words += wordCount(chunk.text)
+            }
+            return keep
+        }
+
+        // A button row near the top belongs to the post above: skip it and anything before it.
+        var firstChunks = first.chunks
+        val topBand = first.window.top + first.window.height() / 5
+        val leadingRow = firstChunks.indexOfFirst { it.isAction }
+        if (leadingRow >= 0 && firstChunks[leadingRow].top < topBand) firstChunks = firstChunks.drop(leadingRow + 1)
 
         // Continuing after a 10-screen stop? Skip what was already read.
         val resume = resumePoint?.takeIf { it.packageName == pkg }
         resumePoint = null
-        val firstFresh = if (resume != null) Overlap.fresh(resume.tail, first.chunks) else first.chunks
+        val firstFresh = if (resume != null) Overlap.fresh(resume.tail, firstChunks) else firstChunks
         if (resume != null) collected.addAll(resume.tail)
 
-        assembler.add(firstFresh)
+        assembler.add(upToActionRow(firstFresh))
         collected.addAll(firstFresh.map { it.text })
         var lastScreen = first.texts
         var screens = 1
         var emptyInARow = 0
         var hitLimit = false
 
-        while (reader.isCurrent(token)) {
+        while (!stoppedAtActions && reader.isCurrent(token)) {
             if (screens >= MAX_SCREENS) {
                 hitLimit = true
                 break
@@ -81,19 +118,20 @@ class ScreenCollector(
             screens++
             val fresh = Overlap.fresh(collected.takeLast(120), next.chunks, lastScreen)
             lastScreen = next.texts
-            if (fresh.isEmpty()) {
+            if (fresh.none { !it.isAction }) {
                 emptyInARow++
                 if (emptyInARow >= 2) break
-                continue
+                if (fresh.isEmpty()) continue
+            } else {
+                emptyInARow = 0
             }
-            emptyInARow = 0
-            assembler.add(fresh)
+            assembler.add(upToActionRow(fresh))
             collected.addAll(fresh.map { it.text })
         }
 
         assembler.flush()
 
-        if (hitLimit && reader.isCurrent(token)) {
+        if (hitLimit && !stoppedAtActions && reader.isCurrent(token)) {
             val moved = withContext(Dispatchers.Default) { scrollForward() }
             if (moved) {
                 delay(SETTLE_MS)
@@ -103,6 +141,9 @@ class ScreenCollector(
         reader.finish(token)
     }
 
+    private fun wordCount(text: String): Int =
+        text.split(Regex("\\s+")).count { word -> word.any { it.isLetter() } }
+
     /** After scrolling, waits for the screen to update. Null if the app changed or nothing moved. */
     private suspend fun waitForChange(pkg: String, previous: List<String>): Screen? {
         repeat(4) {
@@ -110,7 +151,7 @@ class ScreenCollector(
             val screen = withContext(Dispatchers.Default) {
                 val root = findTargetRoot() ?: return@withContext null
                 if (root.packageName?.toString() != pkg) return@withContext Screen("", emptyList())
-                ScreenExtractor.extract(root)
+                ScreenExtractor.extract(root, stopAtActions)
             } ?: return null
             if (screen.packageName != pkg) return null // you switched apps: stop collecting
             if (screen.texts != previous) return screen
@@ -197,12 +238,12 @@ class ScreenCollector(
 
     private suspend fun ocrScreen(root: AccessibilityNodeInfo): List<Block> {
         reader.showMessage("Reading text from the screen image…")
-        panel.setTemporarilyHidden(true)
+        ui.setTemporarilyHidden(true)
         val shot = try {
             delay(250)
             takeScreenshot()
         } finally {
-            panel.setTemporarilyHidden(false)
+            ui.setTemporarilyHidden(false)
         }
         shot ?: return emptyList()
         return withContext(Dispatchers.Default) {

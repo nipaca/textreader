@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -32,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -45,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -129,6 +132,8 @@ private fun MainScreen(reader: Reader, settings: Settings, onOpenFile: () -> Uni
 
         VoiceSettingsCard(settings, reader)
 
+        ReadingOptionsCard(settings)
+
         Text(
             "Private by design: this app has no internet permission. Your text never leaves the phone.",
             style = MaterialTheme.typography.bodySmall,
@@ -140,6 +145,7 @@ private fun MainScreen(reader: Reader, settings: Settings, onOpenFile: () -> Uni
 @Composable
 private fun NowReadingCard(state: ReaderState, reader: Reader) {
     SectionCard(title = if (state.title.isBlank()) "Nothing playing" else state.title) {
+        state.preview?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         Text(statusLine(state), color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (state.total > 0 || state.gathering) {
             var dragging by remember { mutableStateOf(false) }
@@ -147,7 +153,11 @@ private fun NowReadingCard(state: ReaderState, reader: Reader) {
             val maxIndex = (state.total - 1).coerceAtLeast(1)
             Spacer(Modifier.height(8.dp))
             Slider(
-                value = if (dragging) dragValue else state.index.toFloat().coerceAtMost(maxIndex.toFloat()),
+                value = when {
+                    dragging -> dragValue
+                    state.started -> state.index.toFloat().coerceAtMost(maxIndex.toFloat())
+                    else -> 0f
+                },
                 onValueChange = {
                     dragging = true
                     dragValue = it
@@ -159,21 +169,66 @@ private fun NowReadingCard(state: ReaderState, reader: Reader) {
                 valueRange = 0f..maxIndex.toFloat(),
                 enabled = state.total > 1,
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = { reader.togglePlay() }) { Text(if (state.playing) "Pause" else "Play") }
-                Spacer(Modifier.width(12.dp))
-                if (dragging) Text("Go to sentence ${dragValue.roundToInt() + 1}")
+            if (dragging) Text("Go to sentence ${dragValue.roundToInt() + 1}")
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { reader.togglePlay() },
+                    colors = ButtonDefaults.buttonColors(containerColor = PlayGreen, contentColor = Color.White),
+                    modifier = Modifier.weight(1f).height(56.dp),
+                ) { Text(if (state.playing) "Pause" else "Play", style = MaterialTheme.typography.titleMedium) }
+                Button(
+                    onClick = { reader.stop() },
+                    colors = ButtonDefaults.buttonColors(containerColor = StopRed, contentColor = Color.White),
+                    modifier = Modifier.weight(1f).height(56.dp),
+                ) { Text("Stop", style = MaterialTheme.typography.titleMedium) }
             }
         }
     }
 }
 
 @Composable
+private fun ReadingOptionsCard(settings: Settings) {
+    val stopAtActions by settings.stopAtActions.collectAsStateWithLifecycle()
+    val pasteBubble by settings.pasteBubble.collectAsStateWithLifecycle()
+    SectionCard(title = "Reading options") {
+        SettingSwitch(
+            title = "Stop at Like / Share / Copy buttons",
+            detail = "Ends reading at the button row under a post or an AI answer, so the extras after it aren't read.",
+            checked = stopAtActions,
+            onChange = { settings.setStopAtActions(it) },
+        )
+        Spacer(Modifier.height(12.dp))
+        SettingSwitch(
+            title = "Show Paste bubble when I copy",
+            detail = "After you copy text, the bubble pops up for 5 seconds. Tap it, then Paste, then Play.",
+            checked = pasteBubble,
+            onChange = { settings.setPasteBubble(it) },
+        )
+    }
+}
+
+@Composable
+private fun SettingSwitch(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+private val PlayGreen = Color(0xFF3F7A5A)
+private val StopRed = Color(0xFFA65252)
+
+@Composable
 private fun ScreenReadingCard(serviceOn: Boolean) {
     val context = LocalContext.current
     SectionCard(title = "Read what's on screen") {
         if (serviceOn) {
-            Text("Screen reading is on. Press Side key + Volume up to bring back the floating button.")
+            Text("Screen reading is on. Press Side key + Volume up to bring back the floating panel. Drag the bubble onto the X at the bottom to close it.")
             Spacer(Modifier.height(12.dp))
             Row {
                 Button(onClick = { ReaderAccessibilityService.instance?.showPanel() }) { Text("Show floating button") }
@@ -251,6 +306,10 @@ private fun statusLine(state: ReaderState): String {
     state.message?.let { return it }
     if (state.total == 0) {
         return if (state.gathering || state.waiting) "Getting text…" else "Open a file, or use the floating button to read the screen."
+    }
+    if (!state.started && !state.playing) {
+        val sentences = if (state.total == 1) "1 sentence" else "${state.total} sentences"
+        return "Ready · $sentences · press Play"
     }
     val base = "Sentence ${state.index + 1} of ${state.total}"
     return when {

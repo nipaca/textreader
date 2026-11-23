@@ -31,6 +31,24 @@ class Settings(context: Context) {
         _voiceId.value = voice.id
     }
 
+    /** Stop reading at a row of Like / Share / Copy buttons (the end of a post or answer). */
+    private val _stopAtActions = MutableStateFlow(prefs.getBoolean(KEY_STOP_AT_ACTIONS, true))
+    val stopAtActions: StateFlow<Boolean> = _stopAtActions.asStateFlow()
+
+    fun setStopAtActions(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_STOP_AT_ACTIONS, enabled).apply()
+        _stopAtActions.value = enabled
+    }
+
+    /** Show the bubble with a Paste button after you copy text. */
+    private val _pasteBubble = MutableStateFlow(prefs.getBoolean(KEY_PASTE_BUBBLE, true))
+    val pasteBubble: StateFlow<Boolean> = _pasteBubble.asStateFlow()
+
+    fun setPasteBubble(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_PASTE_BUBBLE, enabled).apply()
+        _pasteBubble.value = enabled
+    }
+
     var panelX: Int
         get() = prefs.getInt(KEY_PANEL_X, 24)
         set(value) = prefs.edit().putInt(KEY_PANEL_X, value).apply()
@@ -39,6 +57,14 @@ class Settings(context: Context) {
         get() = prefs.getInt(KEY_PANEL_Y, 400)
         set(value) = prefs.edit().putInt(KEY_PANEL_Y, value).apply()
 
+    var bubbleY: Int
+        get() = prefs.getInt(KEY_BUBBLE_Y, 600)
+        set(value) = prefs.edit().putInt(KEY_BUBBLE_Y, value).apply()
+
+    var bubbleOnRight: Boolean
+        get() = prefs.getBoolean(KEY_BUBBLE_RIGHT, true)
+        set(value) = prefs.edit().putBoolean(KEY_BUBBLE_RIGHT, value).apply()
+
     companion object {
         const val MIN_SPEED = 0.5f
         const val MAX_SPEED = 2.0f
@@ -46,5 +72,9 @@ class Settings(context: Context) {
         private const val KEY_VOICE = "voice"
         private const val KEY_PANEL_X = "panel_x"
         private const val KEY_PANEL_Y = "panel_y"
+        private const val KEY_BUBBLE_Y = "bubble_y"
+        private const val KEY_BUBBLE_RIGHT = "bubble_right"
+        private const val KEY_STOP_AT_ACTIONS = "stop_at_actions"
+        private const val KEY_PASTE_BUBBLE = "paste_bubble"
     }
 }

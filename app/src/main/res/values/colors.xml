@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#0D3B8C</color>
-    <color name="panel_background">#EE1C1F26</color>
-    <color name="panel_accent">#1E66D0</color>
+    <color name="panel_background">#F01C1F26</color>
+    <!-- Muted button colors -->
+    <color name="btn_read">#3A6799</color>
+    <color name="btn_play">#3F7A5A</color>
+    <color name="btn_stop">#A65252</color>
+    <color name="btn_paste">#4F7C80</color>
+    <color name="bubble">#2F4F73</color>
+    <color name="bubble_ring">#6FA383</color>
+    <color name="close_target">#A65252</color>
+    <!-- Kept so an old leftover file (read_button_bg.xml) still builds if it wasn't deleted. -->
+    <color name="panel_accent">#3A6799</color>
 </resources>

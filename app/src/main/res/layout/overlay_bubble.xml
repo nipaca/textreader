@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="66dp"
+    android:layout_height="66dp">
+
+    <ImageView
+        android:id="@+id/bubble_circle"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:layout_gravity="center"
+        android:background="@drawable/bubble_bg"
+        android:contentDescription="@string/app_name"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_launcher_foreground" />
+
+    <ImageView
+        android:id="@+id/bubble_badge"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_gravity="bottom|end"
+        android:background="@drawable/badge_bg"
+        android:contentDescription="@string/paste"
+        android:padding="5dp"
+        android:src="@drawable/ic_clipboard"
+        android:visibility="gone" />
+</FrameLayout>

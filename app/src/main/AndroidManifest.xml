@@ -30,6 +30,16 @@
             </intent-filter>
         </activity>
 
+        <!-- Invisible screen that reads the clipboard for a split second after you tap Paste. -->
+        <activity
+            android:name=".service.PasteActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.TextReader.Transparent" />
+
         <service
             android:name=".service.ReaderAccessibilityService"
             android:exported="true"

@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Text Reader</string>
-    <string name="a11y_description">Shows a floating Read button. When you tap Read, Text Reader reads the text on your screen aloud with an offline voice. It does not change how your phone works, and nothing leaves your phone.</string>
+    <string name="a11y_description">Shows a floating Text Reader bubble. When you tap Read, Text Reader reads the text on your screen aloud with an offline voice. It also notices when you copy text so you can paste it in to listen. It does not change how your phone works, and nothing leaves your phone.</string>
     <string name="read">Read</string>
     <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="stop">Stop</string>
+    <string name="paste">Paste</string>
+    <string name="paste_copied_text">Paste copied text</string>
     <string name="move_panel">Move</string>
-    <string name="hide_panel">Hide</string>
+    <string name="minimize">Minimize</string>
+    <string name="close">Close</string>
 </resources>
